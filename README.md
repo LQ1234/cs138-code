@@ -1,3 +1,70 @@
+# Reinforcement Learning Final Project Source Code
+
+Code for my final project for CS138, "Real-World Reinforcement Learning on a Generalist Robot Policy"
+
+## Installation
+Requirements on server side:
+- H200 GPU
+- openpi enviroment (installation instructions below)
+
+Requirements on client side:
+- SO-101 Robot enviroment including desk and wrist webcam and leader and follower arms
+- Lerobot enviroment including arm calibration files
+
+## Running
+
+On server side:
+```
+$ uv run scripts/train_live.py pi05_so101 --exp-name=my_experiment_2 --overwrite
+warning: The `tool.uv.dev-dependencies` field (used in `packages/openpi-client/pyproject.toml`) is deprecated and will be removed in a future release; use `dependency-groups.dev` instead
+19:29:09.708 [I] Running on: pax010                                                               (3633123:train_live.py:330)
+...Lots of logs..
+Starting Server
+[Server HT] Listening on 0.0.0.0:34211
+[Server LL] Listening on 0.0.0.0:34212
+Private IP: 10.246.224.210
+```
+
+On client side (navigate to `client_side` directory):
+```
+$ python main.py --ip=10.246.224.210
+Initializing robots and cameras...
+  - Robots connected.
+
+pickleio server IP: 10.246.224.210
+Robot connection: OK
+Cameras: main index=1, wrist index=0
+
+Commands:
+  record num=1 prompt="move the red cube on the green cube"
+      # if num is omitted it counts up automatically from 1
+  teleop
+      # teleoperation only (setup phase), no recording or saving
+  playback num=1
+      # plays back episode one
+  train episodes=all epochs=1 lr=1e-6
+      # episodes supports ranges, e.g. episodes=1,3,5,7-10
+  infer seconds=5 prompt="move the red cube on the green cube"
+      # live inference and execution loop
+  sync
+      # reupload all locally-saved episodes to server
+  load checkpoint=NAME
+      # loads a server checkpoint named NAME
+  save checkpoint=NAME
+      # saves the current server policy as checkpoint NAME
+  store checkpoint=NAME
+      # alias for save
+  group_rl lr=1e-5 epochs=1 num=1 n=10 max_dur=60
+      # generates n rollouts (policy inference), saves durations group_<num>.json,
+      # lets you choose rollouts to train, then saves checkpoint group_<num>
+  quit / exit
+
+> 
+```
+
+Use the commands to initiate training and rl routines.
+
+## Original README below:
 # openpi
 
 openpi holds open-source models and packages for robotics, published by the [Physical Intelligence team](https://www.physicalintelligence.company/).

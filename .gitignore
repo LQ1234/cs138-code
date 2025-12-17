@@ -4,6 +4,8 @@ checkpoints/
 data/
 wandb/
 
+modified_libero_rlds
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
