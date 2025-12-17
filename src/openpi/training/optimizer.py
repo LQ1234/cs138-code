@@ -11,6 +11,12 @@ import openpi.shared.array_typing as at
 class LRScheduleConfig(Protocol):
     def create(self) -> optax.Schedule: ...
 
+@dataclasses.dataclass(frozen=True)
+class ConstantSchedule(LRScheduleConfig):
+    value: float = 1
+
+    def create(self) -> optax.Schedule:
+        return optax.constant_schedule(self.value)
 
 @dataclasses.dataclass(frozen=True)
 class CosineDecaySchedule(LRScheduleConfig):

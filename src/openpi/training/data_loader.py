@@ -147,7 +147,7 @@ def create_torch_dataset(
 
     if data_config.prompt_from_task:
         dataset = TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(dataset_meta.tasks)])
-
+    
     return dataset
 
 
@@ -167,6 +167,34 @@ def create_rlds_dataset(
         action_space=data_config.action_space,
         filter_dict_path=data_config.filter_dict_path,
     )
+
+def create_pkl_dataset(
+    data_config: _config.DataConfig,
+    action_horizon: int,
+    model_config: _model.BaseModelConfig,
+    pkl_data_keys: Sequence[str] | None = None,
+) -> Dataset:
+    # for now load episodes/episode_001.pkl and return
+
+    import pickle
+    # with open('./episodes/episode_001.pkl', 'rb') as f:
+    #     episode_data = pickle.load(f)
+    #     return episode_data
+    
+    joined_data = []
+    
+    for key in pkl_data_keys:
+        file_path = os.path.join("./uploads", f"{key}.pkl")
+        try:
+            with open(file_path, 'rb') as f:
+                episode_data = pickle.load(f)
+                joined_data.extend(episode_data)
+        except FileNotFoundError:
+            logging.warning(f"PKL data file not found: {file_path}")
+            continue
+        joined_data.extend(episode_data)
+
+    return joined_data
 
 
 def transform_dataset(dataset: Dataset, data_config: _config.DataConfig, *, skip_norm_stats: bool = False) -> Dataset:
@@ -281,6 +309,7 @@ def create_torch_data_loader(
     num_workers: int = 0,
     seed: int = 0,
     framework: str = "jax",
+    pkl_data_keys: Sequence[str] | None = None,
 ) -> DataLoader[tuple[_model.Observation, _model.Actions]]:
     """Create a data loader for training.
 
@@ -299,7 +328,10 @@ def create_torch_data_loader(
             execute in the main process.
         seed: The seed to use for shuffling the data.
     """
-    dataset = create_torch_dataset(data_config, action_horizon, model_config)
+    if pkl_data_keys is not None:
+        dataset = create_pkl_dataset(data_config, action_horizon, model_config, pkl_data_keys=pkl_data_keys)
+    else:
+        dataset = create_torch_dataset(data_config, action_horizon, model_config)
     dataset = transform_dataset(dataset, data_config, skip_norm_stats=skip_norm_stats)
 
     # Use TorchDataLoader for both frameworks
@@ -404,7 +436,7 @@ class TorchDataLoader:
             num_batches: If provided, determines the number of returned batches. If the
                 number is larger than the number of batches in the dataset, the data loader
                 will loop over the dataset. If not provided, will iterate over the dataset
-                indefinitely.
+                indefinitely. -n means loop through the dataset n times.
             num_workers: The number of worker processes to use. If zero, the data loader will
                 execute in the main process.
             seed: The seed to use for shuffling the data.
@@ -451,10 +483,15 @@ class TorchDataLoader:
 
     def __iter__(self):
         num_items = 0
+        num_epochs = 0
         while True:
             data_iter = iter(self._data_loader)
             while True:
-                if self._num_batches is not None and num_items >= self._num_batches:
+                if self._num_batches is not None and \
+                    ( \
+                        (self._num_batches > 0 and num_items >= self._num_batches) or \
+                        (self._num_batches < 0 and num_epochs >= -self._num_batches) \
+                    ):
                     return
                 try:
                     batch = next(data_iter)
@@ -466,6 +503,7 @@ class TorchDataLoader:
                     yield jax.tree.map(lambda x: jax.make_array_from_process_local_data(self._sharding, x), batch)
                 else:
                     yield jax.tree.map(torch.as_tensor, batch)
+            num_epochs += 1
 
 
 def _collate_fn(items):

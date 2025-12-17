@@ -20,6 +20,7 @@ import openpi.models.tokenizer as _tokenizer
 import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
+import openpi.policies.so101_policy as so101_policy
 import openpi.shared.download as _download
 import openpi.shared.normalize as _normalize
 import openpi.training.droid_rlds_dataset as droid_rlds_dataset
@@ -27,6 +28,8 @@ import openpi.training.misc.roboarena_config as roboarena_config
 import openpi.training.optimizer as _optimizer
 import openpi.training.weight_loaders as weight_loaders
 import openpi.transforms as _transforms
+
+import numpy as np
 
 ModelType: TypeAlias = _model.ModelType
 # Work around a tyro issue with using nnx.filterlib.Filter directly.
@@ -452,6 +455,56 @@ class LeRobotDROIDDataConfig(DataConfigFactory):
             model_transforms=model_transforms,
         )
 
+@dataclasses.dataclass(frozen=True)
+class SO101DataConfig(DataConfigFactory):
+    """
+    DataConfig for SO101-style data.
+
+    Expects raw samples shaped like:
+        {
+            "t": float,
+            "leader_action": (6,),
+            "follower_obs": (6,),          # ignored by this config
+            "image": (H, W, 3) uint8/float,
+            "image_wrist": (H, W, 3) or None (optional),
+            "prompt": str (optional),
+            "actions": (T, 6) (for training),
+        }
+    """
+
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        # Data transforms (applied both for dataset samples and inference).
+        data_transforms = _transforms.Group(
+            inputs=[so101_policy.SO101Inputs(model_type=model_config.model_type)],
+            outputs=[so101_policy.SO101Outputs()],
+        )
+
+        # Hard-coded delta transform:
+        # First 5 action dims are deltas, remaining dims are absolute.
+        delta_action_mask = _transforms.make_bool_mask(5, -1)
+        data_transforms = data_transforms.push(
+            inputs=[_transforms.DeltaActions(delta_action_mask)],
+            outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+        )
+
+        # Model transforms (tokenization etc.).
+        model_transforms = ModelTransformFactory()(model_config)
+
+        # No repack_transforms: inputs already match inference-time keys.
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs, model_config),
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            norm_stats={
+                "state": _transforms.NormStats(
+                    mean=None,
+                    std=None,
+                    q01=np.array([-100, -100, -100, -100, -100, 0]),
+                    q99=np.array([100, 100, 100, 100, 100, 100]),
+                )
+            }
+        )
+
 
 @dataclasses.dataclass(frozen=True)
 class TrainConfig:
@@ -751,6 +804,27 @@ _CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
         pytorch_weight_path="/path/to/your/pytorch_weight_path",
         num_train_steps=30_000,
+    ),
+
+    TrainConfig(
+        name="pi05_so101",
+        model=pi0_config.Pi0Config(pi05=True, action_horizon=20, discrete_state_input=False, max_token_len=120),
+        data=SO101DataConfig(
+            repo_id="USE_PKL",
+        ),
+        batch_size=32,
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=10_000,
+            peak_lr=5e-5,
+            decay_steps=1_000_000,
+            decay_lr=5e-5,
+        ),
+        optimizer=_optimizer.AdamW(clip_gradient_norm=1.0),
+        ema_decay=0.999,
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        pytorch_weight_path="/path/to/your/pytorch_weight_path",
+        num_train_steps=30_000,
+        num_workers=0
     ),
     #
     # Fine-tuning Aloha configs.

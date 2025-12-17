@@ -65,11 +65,13 @@ def initialize_checkpoint_dir(
 def save_state(
     checkpoint_manager: ocp.CheckpointManager,
     state: training_utils.TrainState,
-    data_loader: _data_loader.DataLoader,
+    data_loader: _data_loader.DataLoader | None,
     step: int,
 ):
     def save_assets(directory: epath.Path):
         # Save the normalization stats.
+        if data_loader is None:
+            return
         data_config = data_loader.data_config()
         norm_stats = data_config.norm_stats
         if norm_stats is not None and data_config.asset_id is not None:

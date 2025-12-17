@@ -8,8 +8,8 @@ import pydantic
 
 @pydantic.dataclasses.dataclass
 class NormStats:
-    mean: numpydantic.NDArray
-    std: numpydantic.NDArray
+    mean: numpydantic.NDArray | None
+    std: numpydantic.NDArray | None
     q01: numpydantic.NDArray | None = None  # 1st quantile
     q99: numpydantic.NDArray | None = None  # 99th quantile
 
